@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Project, Issue } from '../types';
 import IssueList from './IssueList';
 import IssueModal from './IssueModal';
+import { toastService } from '../services/toastService';
 
 interface ProjectSpecificationProps {
   project: Project;
@@ -25,44 +26,142 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
 
       // Validate state change - only allow for leaf issues
       if (!githubService.canChangeIssueState(updatedIssue)) {
-        console.warn('Cannot manually change state of non-leaf issue');
+        toastService.warning('Cannot manually change state of non-leaf issue');
         return;
       }
-      
-      // Update issue on GitHub
+
+      // Store original issue for rollback
+      const originalIssue = project.issues.flatMap(function findIssue(issue: Issue): Issue[] {
+        if (issue.id === updatedIssue.id) return [issue];
+        return issue.subIssues.flatMap(findIssue);
+      })[0];
+
+      if (!originalIssue) {
+        toastService.error('Original issue not found for rollback');
+        return;
+      }
+
+      // Step 1: Update issue on GitHub first
       const state = updatedIssue.state === 'Done' ? 'closed' : 'open';
       const labels = [updatedIssue.type];
       if (updatedIssue.state === 'In Progress') {
         labels.push('in-progress');
       }
 
-      await githubService.updateIssue(owner, repo, parseInt(updatedIssue.id), {
-        title: updatedIssue.title,
-        body: updatedIssue.description,
-        state,
-        labels
-      });
+      try {
+        await githubService.updateIssue(owner, repo, parseInt(updatedIssue.id), {
+          title: updatedIssue.title,
+          body: updatedIssue.description,
+          state,
+          labels
+        });
+      } catch (error: any) {
+        toastService.error(`Failed to update issue on GitHub: ${error.message}`);
+        return;
+      }
 
-      // Handle branch creation/deletion for leaf issues
+      // Step 2: Handle branch operations for leaf issues (with rollback on failure)
       if (updatedIssue.subIssues.length === 0) {
+        const branchName = `issue-${updatedIssue.id}`;
+        
         if (updatedIssue.state === 'In Progress') {
           // Create branch for this issue
           try {
-            await githubService.createBranch(owner, repo, `issue-${updatedIssue.id}`);
-          } catch (error) {
-            console.log('Branch might already exist:', error);
+            await githubService.createBranch(owner, repo, branchName);
+            toastService.success(`Created branch '${branchName}' for issue #${updatedIssue.id}`);
+          } catch (error: any) {
+            // Rollback GitHub issue state
+            try {
+              const originalState = originalIssue.state === 'Done' ? 'closed' : 'open';
+              const originalLabels = [originalIssue.type];
+              if (originalIssue.state === 'In Progress') {
+                originalLabels.push('in-progress');
+              }
+              
+              await githubService.updateIssue(owner, repo, parseInt(updatedIssue.id), {
+                title: originalIssue.title,
+                body: originalIssue.description,
+                state: originalState,
+                labels: originalLabels
+              });
+              
+              toastService.error(`Failed to create branch: ${error.message}. Issue state reverted.`);
+            } catch (rollbackError: any) {
+              toastService.error(`Failed to create branch AND failed to rollback issue state: ${error.message}`);
+            }
+            return;
           }
         } else if (updatedIssue.state === 'Done') {
-          // Delete branch when issue is done (in a real app, you'd merge first)
+          // Merge and delete branch when issue is done
           try {
-            await githubService.deleteBranch(owner, repo, `issue-${updatedIssue.id}`);
-          } catch (error) {
-            console.log('Branch might not exist or already deleted:', error);
+            // First try to merge the branch
+            await githubService.mergeBranch(owner, repo, branchName);
+            toastService.success(`Successfully merged branch '${branchName}'`);
+            
+            // Then delete the branch
+            try {
+              await githubService.deleteBranch(owner, repo, branchName);
+              toastService.success(`Successfully deleted branch '${branchName}'`);
+            } catch (deleteError: any) {
+              // Merge succeeded but delete failed - this is not critical
+              toastService.warning(`Branch merged but failed to delete: ${deleteError.message}`);
+            }
+          } catch (mergeError: any) {
+            // Merge failed - check if it's because branch is empty
+            if (mergeError.message.includes('no commits to merge') || mergeError.message.includes('empty branch')) {
+              // For empty branches, just delete them without merging
+              try {
+                await githubService.deleteBranch(owner, repo, branchName);
+                toastService.info(`Deleted empty branch '${branchName}' (no commits to merge)`);
+              } catch (deleteError: any) {
+                // Even deletion failed - rollback issue state
+                try {
+                  const originalState = originalIssue.state === 'Done' ? 'closed' : 'open';
+                  const originalLabels = [originalIssue.type];
+                  if (originalIssue.state === 'In Progress') {
+                    originalLabels.push('in-progress');
+                  }
+                  
+                  await githubService.updateIssue(owner, repo, parseInt(updatedIssue.id), {
+                    title: originalIssue.title,
+                    body: originalIssue.description,
+                    state: originalState,
+                    labels: originalLabels
+                  });
+                  
+                  toastService.error(`Failed to delete empty branch: ${deleteError.message}. Issue state reverted.`);
+                } catch (rollbackError: any) {
+                  toastService.error(`Failed to handle branch AND failed to rollback issue state: ${mergeError.message}`);
+                }
+                return;
+              }
+            } else {
+              // Other merge errors - rollback issue state
+              try {
+                const originalState = originalIssue.state === 'Done' ? 'closed' : 'open';
+                const originalLabels = [originalIssue.type];
+                if (originalIssue.state === 'In Progress') {
+                  originalLabels.push('in-progress');
+                }
+                
+                await githubService.updateIssue(owner, repo, parseInt(updatedIssue.id), {
+                  title: originalIssue.title,
+                  body: originalIssue.description,
+                  state: originalState,
+                  labels: originalLabels
+                });
+                
+                toastService.error(`Failed to merge branch: ${mergeError.message}. Issue state reverted.`);
+              } catch (rollbackError: any) {
+                toastService.error(`Failed to merge branch AND failed to rollback issue state: ${mergeError.message}`);
+              }
+              return;
+            }
           }
         }
       }
 
-      // Update local state and recalculate automatic states
+      // Step 3: Update local UI state only if all GitHub operations succeeded
       const updateIssueInTree = (issues: Issue[]): Issue[] => {
         return issues.map(issue => {
           if (issue.id === updatedIssue.id) {
@@ -78,20 +177,22 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
         });
       };
 
-      // Reload from GitHub to get fresh data with automatic state calculations
-      const githubIssues = await githubService.getRepositoryIssues(owner, repo);
-      const issuesWithCalculatedStates = await githubService.buildIssueHierarchy(githubIssues, owner, repo);
+      const updatedIssues = updateIssueInTree(project.issues);
       
+      // Recalculate automatic states for parent issues
+      const issuesWithRecalculatedStates = githubService.updateIssueStatesRecursively(updatedIssues);
+
       const updatedProject = {
         ...project,
-        issues: issuesWithCalculatedStates
+        issues: issuesWithRecalculatedStates
       };
 
       onProjectUpdate(updatedProject);
       setSelectedIssue(null);
-    } catch (error) {
+      toastService.success(`Issue #${updatedIssue.id} updated successfully`);
+    } catch (error: any) {
       console.error('Error updating issue:', error);
-      alert('Failed to update issue. Please try again.');
+      toastService.error(`Failed to update issue: ${error.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -175,9 +276,10 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
 
       setIsCreateModalOpen(false);
       setCreateIssueParent(null);
-    } catch (error) {
+      toastService.success(`Issue #${issue.id} created successfully`);
+    } catch (error: any) {
       console.error('Error creating issue:', error);
-      alert('Failed to create issue. Please try again.');
+      toastService.error(`Failed to create issue: ${error.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -218,9 +320,10 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
 
       onProjectUpdate(updatedProject);
       setSelectedIssue(null);
-    } catch (error) {
+      toastService.success(`Issue #${issueToDelete.id} deleted successfully`);
+    } catch (error: any) {
       console.error('Error deleting issue:', error);
-      alert('Failed to delete issue. Please try again.');
+      toastService.error(`Failed to delete issue: ${error.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }

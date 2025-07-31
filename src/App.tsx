@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import ToastContainer from './components/ToastContainer';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -30,6 +31,7 @@ function App() {
             />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
           </Routes>
+          <ToastContainer />
         </div>
       </Router>
     </AuthProvider>
