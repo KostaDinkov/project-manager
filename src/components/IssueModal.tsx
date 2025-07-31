@@ -8,9 +8,10 @@ interface IssueModalProps {
   onClose: () => void;
   onUpdate?: (issue: Issue) => void;
   onCreate?: (issue: Omit<Issue, 'id' | 'subIssues'>) => void;
+  onDelete?: (issue: Issue) => void;
 }
 
-export default function IssueModal({ issue, parentIssue, onClose, onUpdate, onCreate }: IssueModalProps) {
+export default function IssueModal({ issue, parentIssue, onClose, onUpdate, onCreate, onDelete }: IssueModalProps) {
   const [title, setTitle] = useState(issue?.title || '');
   const [description, setDescription] = useState(issue?.description || '');
   const [state, setState] = useState<Issue['state']>(issue?.state || 'To Do');
@@ -45,10 +46,8 @@ export default function IssueModal({ issue, parentIssue, onClose, onUpdate, onCr
   };
 
   const handleDelete = () => {
-    if (issue && onUpdate) {
-      // In a real app, you'd want to handle deletion properly
-      // For now, we'll just close the modal
-      onClose();
+    if (issue && onDelete) {
+      onDelete(issue);
     }
   };
 

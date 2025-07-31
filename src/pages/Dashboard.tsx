@@ -1,108 +1,80 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Octokit } from '@octokit/rest';
 import ProjectSpecification from '../components/ProjectSpecification';
+import ProjectSelector from '../components/ProjectSelector';
 import Header from '../components/Header';
-import { Project } from '../types';
+import { Project, Issue } from '../types';
+
+interface Repository {
+  id: number;
+  name: string;
+  full_name: string;
+  description: string | null;
+  owner: {
+    login: string;
+    avatar_url: string;
+  };
+}
 
 export default function Dashboard() {
-  const { user, token } = useAuth();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { githubService } = useAuth();
+  const [selectedRepository, setSelectedRepository] = useState<Repository | null>(null);
+  const [currentProject, setCurrentProject] = useState<Project | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (token) {
-      loadProjects();
+    if (selectedRepository) {
+      loadProjectFromRepository();
     }
-  }, [token]);
+  }, [selectedRepository]);
 
-  const loadProjects = async () => {
+  const loadProjectFromRepository = async () => {
+    if (!githubService || !selectedRepository) return;
+
     try {
-      // For now, we'll create a mock project structure
-      // In a real app, this would come from GitHub Projects API
-      const mockProject: Project = {
-        id: '1',
-        name: 'Sample Project',
-        description: 'A sample project to demonstrate the specification structure',
-        repository: 'owner/repo',
-        issues: [
-          {
-            id: '1',
-            title: 'User Authentication',
-            description: 'Implement user authentication system',
-            state: 'In Progress',
-            type: 'Feature',
-            repository: 'owner/repo',
-            level: 0,
-            parentId: null,
-            subIssues: [
-              {
-                id: '2',
-                title: 'Login Page',
-                description: 'Create login page with GitHub OAuth',
-                state: 'Done',
-                type: 'Task',
-                repository: 'owner/repo',
-                level: 1,
-                parentId: '1',
-                subIssues: []
-              },
-              {
-                id: '3',
-                title: 'Authentication Context',
-                description: 'Create authentication context for state management',
-                state: 'In Progress',
-                type: 'Task',
-                repository: 'owner/repo',
-                level: 1,
-                parentId: '1',
-                subIssues: []
-              }
-            ]
-          },
-          {
-            id: '4',
-            title: 'Project Management',
-            description: 'Core project management functionality',
-            state: 'To Do',
-            type: 'Feature',
-            repository: 'owner/repo',
-            level: 0,
-            parentId: null,
-            subIssues: [
-              {
-                id: '5',
-                title: 'Project Dashboard',
-                description: 'Create project dashboard interface',
-                state: 'To Do',
-                type: 'Task',
-                repository: 'owner/repo',
-                level: 1,
-                parentId: '4',
-                subIssues: []
-              }
-            ]
-          }
-        ]
+      setLoading(true);
+      const [owner, repo] = selectedRepository.full_name.split('/');
+      
+      // Get issues from the repository
+      const githubIssues = await githubService.getRepositoryIssues(owner, repo);
+      
+      // Build hierarchical structure using GitHub's native sub-issue API
+      const issues = await githubService.buildIssueHierarchy(githubIssues, owner, repo);
+      
+      // Create project object
+      const project: Project = {
+        id: selectedRepository.id.toString(),
+        name: selectedRepository.name,
+        description: selectedRepository.description || 'No description available',
+        repository: selectedRepository.full_name,
+        issues
       };
 
-      setProjects([mockProject]);
-      setSelectedProject(mockProject);
+      setCurrentProject(project);
     } catch (error) {
-      console.error('Error loading projects:', error);
+      console.error('Error loading project from repository:', error);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleProjectUpdate = async (updatedProject: Project) => {
+    setCurrentProject(updatedProject);
+    // Here you could sync changes back to GitHub if needed
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600"></div>
-          <p className="mt-4 text-gray-600">Loading projects...</p>
-        </div>
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600"></div>
+              <p className="mt-4 text-gray-600">Loading project data...</p>
+            </div>
+          </div>
+        </main>
       </div>
     );
   }
@@ -112,17 +84,33 @@ export default function Dashboard() {
       <Header />
       
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {selectedProject ? (
-          <ProjectSpecification 
-            project={selectedProject}
-            onProjectUpdate={setSelectedProject}
+        <div className="space-y-6">
+          <ProjectSelector 
+            onProjectSelect={setSelectedRepository}
+            selectedProject={selectedRepository}
           />
-        ) : (
-          <div className="text-center py-12">
-            <h3 className="text-lg font-medium text-gray-900">No project selected</h3>
-            <p className="mt-2 text-gray-600">Select a project to view its specification.</p>
-          </div>
-        )}
+          
+          {currentProject ? (
+            <ProjectSpecification 
+              project={currentProject}
+              onProjectUpdate={handleProjectUpdate}
+            />
+          ) : selectedRepository ? (
+            <div className="bg-white shadow rounded-lg p-6">
+              <div className="text-center py-8">
+                <h3 className="text-lg font-medium text-gray-900">Loading project specification...</h3>
+                <p className="mt-2 text-gray-600">Fetching issues from {selectedRepository.full_name}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white shadow rounded-lg p-6">
+              <div className="text-center py-8">
+                <h3 className="text-lg font-medium text-gray-900">Select a repository</h3>
+                <p className="mt-2 text-gray-600">Choose a repository above to view its project specification.</p>
+              </div>
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );
