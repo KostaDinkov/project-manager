@@ -22,6 +22,12 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
     try {
       setLoading(true);
       const [owner, repo] = project.repository.split('/');
+
+      // Validate state change - only allow for leaf issues
+      if (!githubService.canChangeIssueState(updatedIssue)) {
+        console.warn('Cannot manually change state of non-leaf issue');
+        return;
+      }
       
       // Update issue on GitHub
       const state = updatedIssue.state === 'Done' ? 'closed' : 'open';
@@ -56,7 +62,7 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
         }
       }
 
-      // Update local state
+      // Update local state and recalculate automatic states
       const updateIssueInTree = (issues: Issue[]): Issue[] => {
         return issues.map(issue => {
           if (issue.id === updatedIssue.id) {
@@ -72,9 +78,13 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
         });
       };
 
+      // Reload from GitHub to get fresh data with automatic state calculations
+      const githubIssues = await githubService.getRepositoryIssues(owner, repo);
+      const issuesWithCalculatedStates = await githubService.buildIssueHierarchy(githubIssues, owner, repo);
+      
       const updatedProject = {
         ...project,
-        issues: updateIssueInTree(project.issues)
+        issues: issuesWithCalculatedStates
       };
 
       onProjectUpdate(updatedProject);
@@ -143,14 +153,19 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
           });
         };
 
+        const updatedIssues = updateIssueInTree(project.issues);
+        
+        // Recalculate automatic states since we added a new sub-issue
+        const issuesWithRecalculatedStates = githubService.updateIssueStatesRecursively(updatedIssues);
+
         const updatedProject = {
           ...project,
-          issues: updateIssueInTree(project.issues)
+          issues: issuesWithRecalculatedStates
         };
 
         onProjectUpdate(updatedProject);
       } else {
-        // Add as top-level issue
+        // Add as top-level issue - no need to recalculate states as it's a new root issue
         const updatedProject = {
           ...project,
           issues: [...project.issues, issue]
@@ -191,9 +206,14 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
         });
       };
 
+      const updatedIssues = removeIssueFromTree(project.issues);
+      
+      // Recalculate automatic states since we removed an issue
+      const issuesWithRecalculatedStates = githubService.updateIssueStatesRecursively(updatedIssues);
+
       const updatedProject = {
         ...project,
-        issues: removeIssueFromTree(project.issues)
+        issues: issuesWithRecalculatedStates
       };
 
       onProjectUpdate(updatedProject);
@@ -252,6 +272,7 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
           onClose={() => setSelectedIssue(null)}
           onUpdate={handleIssueUpdate}
           onDelete={handleIssueDelete}
+          canChangeState={githubService?.canChangeIssueState(selectedIssue) ?? true}
         />
       )}
 
@@ -264,6 +285,7 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
             setCreateIssueParent(null);
           }}
           onCreate={handleIssueCreate}
+          defaultRepository={project.repository}
         />
       )}
     </div>

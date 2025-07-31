@@ -9,14 +9,16 @@ interface IssueModalProps {
   onUpdate?: (issue: Issue) => void;
   onCreate?: (issue: Omit<Issue, 'id' | 'subIssues'>) => void;
   onDelete?: (issue: Issue) => void;
+  canChangeState?: boolean; // Whether state can be manually changed (only for leaf issues)
+  defaultRepository?: string; // Default repository for new issues
 }
 
-export default function IssueModal({ issue, parentIssue, onClose, onUpdate, onCreate, onDelete }: IssueModalProps) {
+export default function IssueModal({ issue, parentIssue, onClose, onUpdate, onCreate, onDelete, canChangeState = true, defaultRepository }: IssueModalProps) {
   const [title, setTitle] = useState(issue?.title || '');
   const [description, setDescription] = useState(issue?.description || '');
   const [state, setState] = useState<Issue['state']>(issue?.state || 'To Do');
   const [type, setType] = useState(issue?.type || 'Task');
-  const [repository, setRepository] = useState(issue?.repository || 'owner/repo');
+  const [repository, setRepository] = useState(issue?.repository || defaultRepository || 'owner/repo');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,12 +104,22 @@ export default function IssueModal({ issue, parentIssue, onClose, onUpdate, onCr
           <div>
             <label htmlFor="state" className="block text-sm font-medium text-gray-700">
               State
+              {!canChangeState && issue && (
+                <span className="text-xs text-gray-500 ml-2">
+                  (Automatically calculated based on sub-issues)
+                </span>
+              )}
             </label>
             <select
               id="state"
               value={state}
               onChange={(e) => setState(e.target.value as Issue['state'])}
-              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              disabled={!canChangeState && !!issue}
+              className={`mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none ${
+                (!canChangeState && !!issue) 
+                  ? 'bg-gray-100 text-gray-500 cursor-not-allowed' 
+                  : 'focus:ring-indigo-500 focus:border-indigo-500'
+              }`}
             >
               <option value="To Do">To Do</option>
               <option value="In Progress">In Progress</option>

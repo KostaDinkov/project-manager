@@ -29,7 +29,7 @@ The "Project Manager" has the following types of users:
 The product specification is a living document that evolves during the project lifecycle. It is intended to be the primary source of truth for the project and should be updated regularly as the project progresses. It has the following features:
 ### Structure
 - It is based on Github issues and sub-issues, so it retains the same properties as Github issues.
-- Each issue can have a title, description, a state, a type and a github repository.
+- Each issue can have a title, description, a state, a type.
 - The type of the issue is mapped to github issue labels.
 - Issue type
 - The top-level issues are the main features or modules of the project.

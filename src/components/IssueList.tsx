@@ -118,6 +118,9 @@ export default function IssueList({ issues, level, onIssueClick, onCreateIssue }
                     )}`}
                   >
                     {issue.state}
+                    {issue.subIssues.length === 0 && (
+                      <span className="ml-1 text-xs opacity-75">🍃</span>
+                    )}
                   </span>
                   
                   {issue.subIssues.length > 0 && <CompletenessBar issue={issue} />}
