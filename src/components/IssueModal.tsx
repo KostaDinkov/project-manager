@@ -49,6 +49,13 @@ export default function IssueModal({ issue, parentIssue, onClose, onUpdate, onCr
 
   const handleDelete = () => {
     if (issue && onDelete) {
+      const buttonClickTime = performance.now();
+      console.log(`🔘 DELETE BUTTON CLICKED: Issue #${issue.id} delete button clicked at ${buttonClickTime.toFixed(2)}ms (relative to page load)`);
+      
+      // Store timing in window for cross-component tracking
+      (window as any).deleteStartTime = buttonClickTime;
+      (window as any).deletingIssueId = issue.id;
+      
       onDelete(issue);
     }
   };

@@ -8,6 +8,7 @@ export interface Issue {
   level: number;
   parentId: string | null;
   subIssues: Issue[];
+  _timestamp?: number; // Optional timestamp for forcing React re-renders
 }
 
 export interface Project {

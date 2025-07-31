@@ -58,6 +58,13 @@ export default function Dashboard() {
     }
   };
 
+  // Force reload project data - useful after operations that modify data
+  const forceReloadProject = () => {
+    if (selectedRepository) {
+      loadProjectFromRepository();
+    }
+  };
+
   const handleProjectUpdate = async (updatedProject: Project) => {
     setCurrentProject(updatedProject);
     // Here you could sync changes back to GitHub if needed
@@ -86,7 +93,13 @@ export default function Dashboard() {
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="space-y-6">
           <ProjectSelector 
-            onProjectSelect={setSelectedRepository}
+            onProjectSelect={(repo) => {
+              setSelectedRepository(repo);
+              // Force reload if same repository is selected
+              if (repo && selectedRepository && repo.id === selectedRepository.id) {
+                forceReloadProject();
+              }
+            }}
             selectedProject={selectedRepository}
           />
           
