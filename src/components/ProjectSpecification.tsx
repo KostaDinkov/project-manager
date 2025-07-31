@@ -21,9 +21,6 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
   const handleIssueUpdate = async (updatedIssue: Issue) => {
     if (!githubService) return;
 
-    const updateStartTime = performance.now();
-    console.log(`🚀 UI UPDATE START: Starting issue update for #${updatedIssue.id} at ${updateStartTime.toFixed(2)}ms`);
-
     // Validate state change - only allow for leaf issues
     if (!githubService.canChangeIssueState(updatedIssue)) {
       toastService.warning('Cannot manually change state of non-leaf issue');
@@ -44,7 +41,7 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
     let optimisticProject: Project | null = null;
 
     try {
-      // OPTIMISTIC UPDATE: Update UI immediately for responsive experience
+      // Update UI immediately for responsive experience
       const updateIssueInTree = (issues: Issue[]): Issue[] => {
         return issues.map(issue => {
           if (issue.id === updatedIssue.id) {
@@ -73,20 +70,13 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
       // Update UI immediately with optimistic state
       onProjectUpdate(optimisticProject);
       
-      const uiUpdateTime = performance.now();
-      console.log(`⚡ UI UPDATED: Optimistic update completed in ${(uiUpdateTime - updateStartTime).toFixed(2)}ms`);
-
       // Close modal immediately for responsive feel
       setSelectedIssue(null);
-      
-      const modalCloseTime = performance.now();
-      console.log(`🚪 MODAL CLOSED: Modal closed in ${(modalCloseTime - updateStartTime).toFixed(2)}ms`);
 
       setLoading(true);
       const [owner, repo] = project.repository.split('/');
 
       // Background GitHub operations
-      const githubStartTime = performance.now();
 
       // Step 1: Update issue on GitHub
       const state = updatedIssue.state === 'Done' ? 'closed' : 'open';
@@ -102,13 +92,9 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
           state,
           labels
         });
-        
-        const githubUpdateTime = performance.now();
-        console.log(`📡 GITHUB UPDATED: Issue updated on GitHub in ${(githubUpdateTime - githubStartTime).toFixed(2)}ms`);
 
       } catch (error: any) {
         // Rollback UI changes and show error
-        console.log(`❌ GITHUB UPDATE FAILED: Rolling back UI changes`);
         onProjectUpdate(project);
         toastService.error(`Failed to update issue on GitHub: ${error.message}`);
         return;
@@ -121,14 +107,10 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
         if (updatedIssue.state === 'In Progress') {
           // Create branch for this issue
           try {
-            const branchStartTime = performance.now();
             await githubService.createBranch(owner, repo, branchName);
-            const branchEndTime = performance.now();
-            console.log(`🌿 BRANCH CREATED: Branch '${branchName}' created in ${(branchEndTime - branchStartTime).toFixed(2)}ms`);
             toastService.success(`Created branch '${branchName}' for issue #${updatedIssue.id}`);
           } catch (error: any) {
             // Rollback GitHub issue state and UI
-            console.log(`❌ BRANCH CREATE FAILED: Rolling back GitHub and UI changes`);
             try {
               await githubService.rollbackIssueState(owner, repo, parseInt(updatedIssue.id), {
                 title: originalIssue.title,
@@ -150,19 +132,13 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
         } else if (updatedIssue.state === 'Done') {
           // Merge and delete branch when issue is done
           try {
-            const mergeStartTime = performance.now();
             // First try to merge the branch
             await githubService.mergeBranch(owner, repo, branchName);
-            const mergeEndTime = performance.now();
-            console.log(`🔀 BRANCH MERGED: Branch '${branchName}' merged in ${(mergeEndTime - mergeStartTime).toFixed(2)}ms`);
             toastService.success(`Successfully merged branch '${branchName}'`);
             
             // Then delete the branch
             try {
-              const deleteStartTime = performance.now();
               await githubService.deleteBranch(owner, repo, branchName);
-              const deleteEndTime = performance.now();
-              console.log(`🗑️ BRANCH DELETED: Branch '${branchName}' deleted in ${(deleteEndTime - deleteStartTime).toFixed(2)}ms`);
               toastService.success(`Successfully deleted branch '${branchName}'`);
             } catch (deleteError: any) {
               // Merge succeeded but delete failed - this is not critical
@@ -173,14 +149,10 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
             if (mergeError.message.includes('no commits to merge') || mergeError.message.includes('empty branch')) {
               // For empty branches, just delete them without merging
               try {
-                const deleteStartTime = performance.now();
                 await githubService.deleteBranch(owner, repo, branchName);
-                const deleteEndTime = performance.now();
-                console.log(`🗑️ EMPTY BRANCH DELETED: Empty branch '${branchName}' deleted in ${(deleteEndTime - deleteStartTime).toFixed(2)}ms`);
                 toastService.info(`Deleted empty branch '${branchName}' (no commits to merge)`);
               } catch (deleteError: any) {
                 // Even deletion failed - rollback issue state and UI
-                console.log(`❌ BRANCH DELETE FAILED: Rolling back GitHub and UI changes`);
                 try {
                   await githubService.rollbackIssueState(owner, repo, parseInt(updatedIssue.id), {
                     title: originalIssue.title,
@@ -201,7 +173,6 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
               }
             } else {
               // Other merge errors - rollback issue state and UI
-              console.log(`❌ BRANCH MERGE FAILED: Rolling back GitHub and UI changes`);
               try {
                 await githubService.rollbackIssueState(owner, repo, parseInt(updatedIssue.id), {
                   title: originalIssue.title,
@@ -224,21 +195,11 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
         }
       }
 
-      const githubEndTime = performance.now();
-      console.log(`📡 GITHUB COMPLETE: All GitHub operations completed in ${(githubEndTime - githubStartTime).toFixed(2)}ms`);
-      
-      const totalTime = performance.now();
-      console.log(`🎉 UPDATE COMPLETE: Total operation completed in ${(totalTime - updateStartTime).toFixed(2)}ms`);
-
       toastService.success(`Issue #${updatedIssue.id} updated successfully`);
       
     } catch (error: any) {
-      const errorTime = performance.now();
-      console.log(`❌ UPDATE FAILED: Operation failed at ${errorTime.toFixed(2)}ms (${(errorTime - updateStartTime).toFixed(2)}ms total)`);
-      
       // ROLLBACK: Restore original project state
       if (optimisticProject) {
-        console.log(`🔄 UI ROLLBACK: Restoring original project state`);
         onProjectUpdate(project);
       }
       
@@ -252,9 +213,6 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
   const handleIssueCreate = async (newIssue: Omit<Issue, 'id' | 'subIssues'>) => {
     if (!githubService) return;
 
-    const createStartTime = performance.now();
-    console.log(`🚀 UI CREATE START: Starting issue creation "${newIssue.title}" at ${createStartTime.toFixed(2)}ms`);
-
     // Generate optimistic temporary ID for immediate UI update
     const tempId = 'temp-' + Date.now();
     const optimisticIssue: Issue = {
@@ -266,7 +224,7 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
     let optimisticProject: Project | null = null;
 
     try {
-      // OPTIMISTIC UPDATE: Add to UI immediately for responsive experience
+      // Add to UI immediately for responsive experience
       if (createIssueParent) {
         // Add as sub-issue optimistically
         const updateIssueInTree = (issues: Issue[]): Issue[] => {
@@ -306,22 +264,15 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
 
       // Update UI immediately with optimistic state
       onProjectUpdate(optimisticProject);
-      
-      const uiUpdateTime = performance.now();
-      console.log(`⚡ UI UPDATED: Optimistic update completed in ${(uiUpdateTime - createStartTime).toFixed(2)}ms`);
 
       // Close modal immediately for responsive feel
       setIsCreateModalOpen(false);
       setCreateIssueParent(null);
-      
-      const modalCloseTime = performance.now();
-      console.log(`🚪 MODAL CLOSED: Modal closed in ${(modalCloseTime - createStartTime).toFixed(2)}ms`);
 
       setLoading(true);
       const [owner, repo] = project.repository.split('/');
 
       // Background GitHub operations
-      const githubStartTime = performance.now();
       let githubIssue;
 
       if (createIssueParent) {
@@ -344,9 +295,6 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
           [newIssue.type]
         );
       }
-
-      const githubEndTime = performance.now();
-      console.log(`📡 GITHUB COMPLETE: GitHub operations completed in ${(githubEndTime - githubStartTime).toFixed(2)}ms`);
 
       // Replace optimistic issue with real GitHub issue
       const realIssue: Issue = {
@@ -378,20 +326,12 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
       };
 
       onProjectUpdate(finalProject);
-      
-      const finalUpdateTime = performance.now();
-      console.log(`✅ FINAL UPDATE: Real issue data updated in ${(finalUpdateTime - githubEndTime).toFixed(2)}ms`);
-      console.log(`🎉 CREATE COMPLETE: Total operation completed in ${(finalUpdateTime - createStartTime).toFixed(2)}ms`);
 
       toastService.success(`Issue #${realIssue.id} created successfully`);
       
     } catch (error: any) {
-      const errorTime = performance.now();
-      console.log(`❌ CREATE FAILED: Operation failed at ${errorTime.toFixed(2)}ms (${(errorTime - createStartTime).toFixed(2)}ms total)`);
-      
       // ROLLBACK: Remove optimistic issue and restore original state
       if (optimisticProject) {
-        console.log(`🔄 UI ROLLBACK: Restoring original project state`);
         onProjectUpdate(project);
       }
       
@@ -405,16 +345,11 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
   const handleIssueDelete = async (issueToDelete: Issue) => {
     if (!githubService) return;
 
-    const deleteStartTime = (window as any).deleteStartTime || performance.now();
-    const handlerStartTime = performance.now();
-    console.log(`🎯 DELETE HANDLER START: Issue #${issueToDelete.id} handler started at ${handlerStartTime.toFixed(2)}ms (relative to page load)`);
-    console.log(`⏱️ TIME FROM BUTTON CLICK: ${(handlerStartTime - deleteStartTime).toFixed(2)}ms elapsed since button click`);
-
     try {
       setLoading(true);
       const [owner, repo] = project.repository.split('/');
 
-      // 🚀 IMMEDIATE UI RESPONSE: Close modal RIGHT AFTER optimistic cache update
+      // Close modal and show success immediately
       const subIssueCount = countSubIssues(issueToDelete);
       const message = subIssueCount > 0 
         ? `Issue #${issueToDelete.id} and ${subIssueCount} sub-issues deleted successfully`
@@ -422,23 +357,14 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
       
       // Close modal immediately - don't wait for GitHub!
       setSelectedIssue(null);
-      const modalCloseTime = performance.now();
-      console.log(`🚪 MODAL CLOSED: Issue #${issueToDelete.id} modal closed at ${modalCloseTime.toFixed(2)}ms (relative to page load)`);
-      console.log(`⏱️ TIME FROM BUTTON CLICK TO MODAL CLOSE: ${(modalCloseTime - deleteStartTime).toFixed(2)}ms ⭐ THIS IS THE KEY METRIC ⭐`);
-      
       toastService.success(message);
       setLoading(false);
-
-      const uiUpdateCompleteTime = performance.now();
-      console.log(`✅ UI UPDATE COMPLETE: Issue #${issueToDelete.id} all UI updates completed at ${uiUpdateCompleteTime.toFixed(2)}ms (relative to page load)`);
-      console.log(`📊 INSTANT UI TIME: ${(uiUpdateCompleteTime - deleteStartTime).toFixed(2)}ms for instant UI response`);
 
       // Clear timing data
       delete (window as any).deleteStartTime;
       delete (window as any).deletingIssueId;
 
-      // 🔄 BACKGROUND OPERATIONS: Do GitHub operations in background without blocking UI
-      console.log(`🔄 STARTING BACKGROUND GITHUB OPERATIONS for issue #${issueToDelete.id}...`);
+      // Background GitHub operations without blocking UI
       
       // Recursively delete all sub-issues first, then the parent
       const deleteIssueRecursively = async (issue: Issue): Promise<void> => {
@@ -453,10 +379,6 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
 
       // Delete the issue and all its sub-issues on GitHub (in background)
       deleteIssueRecursively(issueToDelete).then(() => {
-        const deletionCompleteTime = performance.now();
-        console.log(`⚡ BACKGROUND DELETION COMPLETE: Issue #${issueToDelete.id} GitHub deletion completed at ${deletionCompleteTime.toFixed(2)}ms (relative to page load)`);
-        console.log(`⏱️ TOTAL GITHUB TIME: ${(deletionCompleteTime - deleteStartTime).toFixed(2)}ms for GitHub operations (background)`);
-        
         // Background sync after GitHub operations complete
         return Promise.all([
           githubService.getRepositoryIssues(owner, repo),
@@ -483,8 +405,6 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
           // Force a complete component refresh by updating state
           setForceRefresh(prev => prev + 1);
           onProjectUpdate(updatedProject);
-          
-          console.log(`🔄 BACKGROUND SYNC COMPLETE: Project state updated for issue #${issueToDelete.id}`);
         }
       }).catch((syncError) => {
         console.warn('Background operations failed, but UI deletion was successful:', syncError);

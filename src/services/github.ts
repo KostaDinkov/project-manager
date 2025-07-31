@@ -52,11 +52,8 @@ export class GitHubService {
     }
   }
 
-  // Create a new issue with enhanced error handling and performance tracking
+  // Create a new issue with enhanced error handling
   async createIssue(owner: string, repo: string, title: string, body?: string, labels?: string[]) {
-    const startTime = performance.now();
-    console.log(`🚀 ISSUE CREATE START: Creating issue "${title}" at ${startTime.toFixed(2)}ms`);
-    
     try {
       const { data } = await this.octokit.rest.issues.create({
         owner,
@@ -66,14 +63,8 @@ export class GitHubService {
         labels
       });
       
-      const endTime = performance.now();
-      console.log(`✅ ISSUE CREATE COMPLETE: Issue #${data.number} created in ${(endTime - startTime).toFixed(2)}ms`);
-      
       return data;
     } catch (error: any) {
-      const errorTime = performance.now();
-      console.log(`❌ ISSUE CREATE FAILED: Operation failed at ${errorTime.toFixed(2)}ms (${(errorTime - startTime).toFixed(2)}ms total)`);
-      
       // Enhanced error handling with specific GitHub API error codes
       if (error.status === 404) {
         throw new Error(`Repository not found or not accessible.`);
@@ -98,9 +89,6 @@ export class GitHubService {
     state: 'To Do' | 'In Progress' | 'Done';
     type: string;
   }) {
-    const rollbackStartTime = performance.now();
-    console.log(`🔄 ROLLBACK START: Rolling back issue #${issueNumber} to original state at ${rollbackStartTime.toFixed(2)}ms`);
-    
     try {
       const state = originalIssue.state === 'Done' ? 'closed' : 'open';
       const labels = [originalIssue.type];
@@ -115,29 +103,20 @@ export class GitHubService {
         labels
       });
       
-      const rollbackEndTime = performance.now();
-      console.log(`✅ ROLLBACK COMPLETE: Issue #${issueNumber} rolled back in ${(rollbackEndTime - rollbackStartTime).toFixed(2)}ms`);
-      
     } catch (error: any) {
-      const rollbackErrorTime = performance.now();
-      console.log(`❌ ROLLBACK FAILED: Issue #${issueNumber} rollback failed at ${rollbackErrorTime.toFixed(2)}ms`);
       throw new Error(`Failed to rollback issue state: ${error.message}`);
     }
   }
 
-  // Update an existing issue with enhanced error handling and performance tracking
+  // Update an existing issue with enhanced error handling
   async updateIssue(owner: string, repo: string, issueNumber: number, updates: {
     title?: string;
     body?: string;
     state?: 'open' | 'closed';
     labels?: string[];
   }) {
-    const startTime = performance.now();
-    console.log(`🔄 ISSUE UPDATE START: Updating issue #${issueNumber} at ${startTime.toFixed(2)}ms`);
-    
     try {
       // Validate that the issue exists and is not deleted before updating
-      const validateStart = performance.now();
       
       // Check if issue is in our deleted cache
       if (this.deletedIssuesCache.has(issueNumber.toString())) {
@@ -160,11 +139,7 @@ export class GitHubService {
         throw new Error(`Cannot update issue #${issueNumber}: Issue is deleted`);
       }
       
-      const validateEnd = performance.now();
-      console.log(`✅ ISSUE VALIDATED: Issue #${issueNumber} validated in ${(validateEnd - validateStart).toFixed(2)}ms`);
-      
       // Perform the update
-      const updateStart = performance.now();
       const { data } = await this.octokit.rest.issues.update({
         owner,
         repo,
@@ -172,17 +147,8 @@ export class GitHubService {
         ...updates
       });
       
-      const updateEnd = performance.now();
-      console.log(`✅ ISSUE UPDATE COMPLETE: Issue #${issueNumber} updated in ${(updateEnd - updateStart).toFixed(2)}ms`);
-      
-      const totalTime = performance.now();
-      console.log(`🎉 UPDATE OPERATION COMPLETE: Total time ${(totalTime - startTime).toFixed(2)}ms`);
-      
       return data;
     } catch (error: any) {
-      const errorTime = performance.now();
-      console.log(`❌ ISSUE UPDATE FAILED: Operation failed at ${errorTime.toFixed(2)}ms (${(errorTime - startTime).toFixed(2)}ms total)`);
-      
       // Enhanced error handling with specific GitHub API error codes
       if (error.status === 404) {
         throw new Error(`Issue #${issueNumber} not found or repository not accessible.`);
@@ -208,10 +174,8 @@ export class GitHubService {
     const issueIdString = issueNumber.toString();
     
     try {
-      // OPTIMISTIC UPDATE: Add to cache immediately for responsive UI
+      // Add to cache immediately for responsive UI
       this.deletedIssuesCache.add(issueIdString);
-      const cacheTime = performance.now();
-      console.log(`🕑 CACHE UPDATED: Issue #${issueNumber} added to cache at ${cacheTime.toFixed(2)}ms (relative to page load)`);
       
       // First, ensure the 'deleted' label exists in the repository
       await this.ensureDeletedLabelExists(owner, repo);
@@ -253,16 +217,10 @@ export class GitHubService {
         throw new Error(`GitHub did not apply the 'deleted' label to issue #${issueNumber}`);
       }
       
-      const endTime = performance.now();
-      console.log(`🕕 DELETE COMPLETE: Issue #${issueNumber} GitHub operation completed at ${endTime.toFixed(2)}ms (relative to page load)`);
-      
       return data;
     } catch (error: any) {
       // ROLLBACK: Remove from cache since GitHub operation failed
       this.deletedIssuesCache.delete(issueIdString);
-      
-      const errorTime = performance.now();
-      console.log(`❌ DELETE FAILED: Issue #${issueNumber} failed at ${errorTime.toFixed(2)}ms (relative to page load)`);
       
       console.error(`Error deleting issue #${issueNumber}:`, error);
       if (error.status === 404) {
@@ -602,20 +560,13 @@ export class GitHubService {
 
   // Create a sub-issue using GitHub's native sub-issue API with optimistic updates and rollback
   async createSubIssue(owner: string, repo: string, parentNumber: number, title: string, body?: string, labels?: string[]) {
-    const startTime = performance.now();
-    console.log(`🚀 SUB-ISSUE CREATE START: Creating sub-issue "${title}" for parent #${parentNumber} at ${startTime.toFixed(2)}ms`);
-    
     let createdIssue: any = null;
     
     try {
       // Step 0: Validate parent issue first
-      const validateStart = performance.now();
       await this.validateParentIssue(owner, repo, parentNumber);
-      const validateEnd = performance.now();
-      console.log(`✅ PARENT VALIDATED: Parent issue #${parentNumber} validated in ${(validateEnd - validateStart).toFixed(2)}ms`);
 
       // Step 1: Create a regular issue first
-      const issueCreateStart = performance.now();
       const issueResponse = await this.octokit.rest.issues.create({
         owner,
         repo,
@@ -625,11 +576,8 @@ export class GitHubService {
       });
       
       createdIssue = issueResponse.data;
-      const issueCreateEnd = performance.now();
-      console.log(`✅ ISSUE CREATED: Issue #${createdIssue.number} created in ${(issueCreateEnd - issueCreateStart).toFixed(2)}ms`);
 
       // Step 2: Link it as a sub-issue to the parent using GitHub's native API
-      const linkStart = performance.now();
       await this.octokit.request('POST /repos/{owner}/{repo}/issues/{issue_number}/sub_issues', {
         owner,
         repo,
@@ -640,12 +588,8 @@ export class GitHubService {
         }
       });
       
-      const linkEnd = performance.now();
-      console.log(`🔗 SUB-ISSUE LINKED: Issue #${createdIssue.number} linked to parent #${parentNumber} in ${(linkEnd - linkStart).toFixed(2)}ms`);
-      
       // Step 3: Verify the sub-issue relationship was established
       try {
-        const verifyStart = performance.now();
         const subIssuesResponse = await this.octokit.request('GET /repos/{owner}/{repo}/issues/{issue_number}/sub_issues', {
           owner,
           repo,
@@ -656,39 +600,24 @@ export class GitHubService {
         });
         
         const isLinked = subIssuesResponse.data.some((subIssue: any) => subIssue.id === createdIssue.id);
-        const verifyEnd = performance.now();
         
         if (!isLinked) {
           throw new Error(`Sub-issue relationship verification failed: Issue #${createdIssue.number} not found in parent #${parentNumber} sub-issues`);
         }
-        
-        console.log(`✅ SUB-ISSUE VERIFIED: Relationship verified in ${(verifyEnd - verifyStart).toFixed(2)}ms`);
         
       } catch (verifyError) {
         console.warn(`⚠️ SUB-ISSUE VERIFICATION FAILED: Could not verify sub-issue relationship, but continuing as link operation succeeded`);
         // Don't fail the entire operation if verification fails, as the link operation already succeeded
       }
 
-      const totalTime = performance.now();
-      console.log(`🎉 SUB-ISSUE CREATE COMPLETE: Total operation completed in ${(totalTime - startTime).toFixed(2)}ms`);
-      
       return createdIssue;
       
     } catch (error: any) {
-      const errorTime = performance.now();
-      console.log(`❌ SUB-ISSUE CREATE FAILED: Operation failed at ${errorTime.toFixed(2)}ms (${(errorTime - startTime).toFixed(2)}ms total)`);
-      
       // AUTOMATIC ROLLBACK: If we created an issue but failed to link it as sub-issue, delete the orphaned issue
       if (createdIssue) {
         try {
-          console.log(`🔄 ROLLBACK START: Attempting to delete orphaned issue #${createdIssue.number}`);
-          const rollbackStart = performance.now();
-          
           // Use our delete method to properly mark it as deleted
           await this.deleteIssue(owner, repo, createdIssue.number);
-          
-          const rollbackEnd = performance.now();
-          console.log(`✅ ROLLBACK COMPLETE: Orphaned issue #${createdIssue.number} deleted in ${(rollbackEnd - rollbackStart).toFixed(2)}ms`);
           
         } catch (rollbackError: any) {
           console.error(`❌ ROLLBACK FAILED: Could not delete orphaned issue #${createdIssue.number}:`, rollbackError);
