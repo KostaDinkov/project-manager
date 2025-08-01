@@ -266,6 +266,15 @@ export default function ProjectSpecification({ project, onProjectUpdate }: Proje
         <div className="border-t border-gray-200 pt-4">
           <h3 className="text-lg font-medium text-gray-900 mb-4">Project Specification</h3>
           
+          {/* Debug information */}
+          <div className="mb-4 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+            <strong>Debug Info:</strong><br/>
+            Project ID: {project.id}<br/>
+            Issues Count: {project.issues.length}<br/>
+            Issues: {project.issues.map(i => `#${i.id}`).join(', ') || 'None'}<br/>
+            Force Refresh: {forceRefresh}
+          </div>
+          
           {loading && (
             <div className="flex items-center justify-center py-4">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>

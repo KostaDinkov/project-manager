@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import ProjectSpecification from '../components/ProjectSpecification';
 import ProjectSelector from '../components/ProjectSelector';
 import Header from '../components/Header';
-import { Project, Issue } from '../types';
+import { Project } from '../types';
 
 interface Repository {
   id: number;

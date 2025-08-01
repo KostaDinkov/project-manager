@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { GitHubService } from '../services/github';
+import { GitHubService } from '../services/githubService';
 
 interface User {
   id: string;
